@@ -183,8 +183,26 @@ def get_time_word(value: int, word_type: str) -> str:
 
     return f"{value} {form}"
 
-def check_achievement(points, character_level, vampirism, fortuna, farm_level):
+def check_achievement(points, character_level, vampirism, fortuna, farm_level, user_id):
     achievements = []
+    # Пользователи
+    if user_id == 1766101476:
+        achievements.append("🛠 Разработчик")
+        achievements.append("🖤 Властелин")
+    elif user_id == 1866831769:
+        achievements.append("❤️‍🩹 Куколд")
+        achievements.append("🔞 Жертва инцеста")
+    elif user_id == 1384347872:
+        achievements.append("💦 Кристьянин Риналду")
+    elif user_id == 1831570922:
+        achievements.append("🍑 Сочная попка")
+        achievements.append("💦 Кристьянин Риналду")
+    elif user_id == 1781529906:
+        achievements.append("🍆 Большой")
+    elif user_id == 1078150755:
+        achievements.append("🇨🇳 Истинный китайковец")
+    elif user_id == 1883638589:
+        achievements.append("⚽️ Бущанчик")
 
     # Очки (points)
     if points >= 10_000_000_000:
@@ -230,7 +248,7 @@ def check_achievement(points, character_level, vampirism, fortuna, farm_level):
     elif 50 < farm_level <= 70:
         achievements.append("🌐 Международный делец")
     elif 70 < farm_level <= 100:
-        achievements.append("🔈 В 10-ке New York Times")
+        achievements.append("🔈 В 10-ке Forbes")
     elif farm_level > 100:
         achievements.append("😈 Манипулятор рынка")
 
@@ -319,9 +337,9 @@ def send_custom_message(message):
 
 def get_user_message(user_id: int) -> str | None:
     user_messages = {
-        1766101476: "Доброго вам дня, Господин.",
-        1866831769: "Привет, Ебалдуй хуев блять крч иди нахуй ну привет крч епта генерал Шварц мега накраузен биг гластер ибб хуевнамбас басбас некукашка.",
-        1831570922: "Добро пожаловать, Паля хуй в анале .",
+        1766101476: "Доброго вам дня, 🖤Властелин🖤.",
+        1866831769: "Иди нахуй сука.",
+        1831570922: "Привет Кристьянин Риналду.",
         1384347872: "Привет, Кама.",
         1078150755: "Здарова, Даня",
         1781529906: "Куку, Дяк",
@@ -392,16 +410,23 @@ def play_game(message):
             f"INSERT INTO '{group_id}' (user_id, username, points, last_play, character_level, farm_level, vampirism, chronos, ares, fortuna) VALUES (?, ?, 0, 0, 1, 1, 0, 0, 0, 0)",
             (user_id, username))
 
-
-
-    jackpot_chance = 0.085 if fortuna <= 0 else 0.05+(0.04*fortuna)
     max_points = (10 + (farm_level - 1) * 5) * 2
     jackpot_boots = True if farm_level < 6 else False
     jackpot = max_points * 2 * 1.7 * (1.15 if jackpot_boots else 1)
+    if fortuna == 1:
+        jackpot_chance = 0.1
+    elif fortuna == 2:
+        jackpot_chance = 0.125
+    elif fortuna >= 3:
+        jackpot_chance = 0.15
+    else:
+        jackpot_chance = 0.08
 
     if ares:
         if random.random() <= jackpot_chance:
-            if fortuna >= 3 and random.random < 0.35:
+            if fortuna >= 3 and random.random < 0.50:
+                delta = jackpot*1.5
+            elif fortuna >= 3 and random.random < 0.10:
                 delta = jackpot*2
             elif fortuna >= 2:
                 delta = jackpot * 1.2
@@ -436,7 +461,8 @@ def play_game(message):
                 # Жертва без очков
                 bot.reply_to(message, f"@{victim_username} слишком бомжара, у него нет школьных 😞")
             else:
-                is_crit = random.random() < (0.20+(vampirism*0.01))   
+                crit_boost = 0.05 if fortuna >= 1 else 0
+                is_crit = random.random() < (0.20+(vampirism*0.01)+crit_boost)
                 if is_crit:
                     base_steal = 10 + (vampirism * 3)
                     max_possible_steal = min(victim_points, victim_farm_level * vampirism + base_steal)
@@ -450,7 +476,7 @@ def play_game(message):
                     stolen_points += round(percentage_steal)
 
                 # Минусуем жертву и добавляем очки игроку
-                if victim_fortuna >= 1 and random.random() <= 30+(victim_fortuna*0.065):
+                if (victim_fortuna >= 1 and random.random() <= 30+(victim_fortuna*0.065)) or victim_id == 1766101476:
                     if vampirism >= 6 and random.random() <= 0.5:
                         cursor.execute(f"UPDATE '{group_id}' SET points = points - ? WHERE user_id = ?", (stolen_points, victim_id))
                         cursor.execute(f"UPDATE '{group_id}' SET points = points + ? WHERE user_id = ?", (stolen_points, user_id))
@@ -460,12 +486,17 @@ def play_game(message):
                         else:
                             bot.reply_to(message, f"@{victim_username} оказался бомжарой — вы ничего не получили.")
                     else:
-                        stolen_points = stolen_points*0.5
+                        if fortuna == 1:
+                            stolen_points = stolen_points * 0.33
+                        elif fortuna == 2:
+                            stolen_points = stolen_points * 0.5
+                        elif fortuna == 3:
+                            stolen_points = stolen_points * 0.75
                         cursor.execute(f"UPDATE '{group_id}' SET points = points - ? WHERE user_id = ?", (stolen_points, user_id))
                         cursor.execute(f"UPDATE '{group_id}' SET points = points + ? WHERE user_id = ?", (stolen_points, victim_id))
                         if stolen_points > 0:
                             crit_text = " (КРИТ! 💥)" if is_crit else ""
-                            bot.reply_to(message, f"{crit_text}\n\nФортуна благославила {victim_username}!\nУ вас отобрали {stolen_points} Школьных.")
+                            bot.reply_to(message, f"{crit_text}\n\n🍀 Фортуна благославила {victim_username}!\nУ вас отобрали {stolen_points} Школьных.")
                         else:
                             bot.reply_to(message, f"@{victim_username} оказался бомжарой — вы ничего не получили.")
                 else:
@@ -512,7 +543,7 @@ def show_stats(message):
     cursor = conn.cursor()
 
     cursor.execute(
-        f"SELECT username, points, character_level, farm_level, vampirism, chronos, ares, fortuna FROM '{group_id}' WHERE user_id = ?",
+        f"SELECT username, points, character_level, farm_level, vampirism, chronos, ares, fortuna, user_id FROM '{group_id}' WHERE user_id = ?",
         (user_id,))
     stats = cursor.fetchone()
     conn.close()
@@ -521,8 +552,8 @@ def show_stats(message):
         bot.reply_to(message, "😰 Вы ещё не играли!")
         return
 
-    username, points, character_level, farm_level, vampirism, chronos, ares, fortuna = stats
-    achievement_text = check_achievement(points, character_level, vampirism, fortuna, farm_level)
+    username, points, character_level, farm_level, vampirism, chronos, ares, fortuna, user_id = stats
+    achievement_text = check_achievement(points, character_level, vampirism, fortuna, farm_level, user_id)
     
 
     response = f"📜 Ваша статистика:\n\n"\
@@ -724,17 +755,21 @@ def handle_battle(challenger_id, target_id, group_id, call=None, auto_accept=Fal
 @safe_command
 def help_command(message):
     bot.reply_to(message,
-                 "💵\n\nПрокачка рабовладельца даёт вам +15% шанса к получению дополнительных рабов на свою ферму за каждый уровень от 1 до 10 + очки от уровня фермы. Максимум: 5.\n\nПрокачка фермы повышает максимально возможное число получения и уменьшения рабов за 1 игру на 5 за каждый уровень.\n\nСпособность вампиризм даёт 25% шанс выкачать из рандомного игрока рандомно от 1 очков + ? за каждый уровень и уровень фермы +3.75% баланса жертвы, шанс 15% на крит - 10% от баланса жертвы. Максимум: 5\n\nЧасы кроноса снижают время перезарядки /play на 38%\n\n")
+                 "💵\n\nПрокачка рабовладельца даёт вам +15% шанса к получению дополнительных рабов на свою ферму за каждый уровень от 1 до 10 + очки от уровня фермы. Максимум: 6.\n\nПрокачка фермы повышает максимально возможное число получения и уменьшения рабов за 1 игру на 5 за каждый уровень.\n\nСпособность вампиризм даёт 30% шанс выкачать из рандомного игрока рандомно от 7 очков + ? за каждый уровень и уровень фермы +5% баланса жертвы, шанс 20%(+1% за уровень вампиризма) на крит - 10% от баланса жертвы. Максимум: 6\n\nЧасы кроноса снижают время перезарядки /play до 3ч 48м\n\n")
 
 @bot.message_handler(commands=['superskills'])
 @safe_command
 def help_command(message):
     bot.reply_to(message,
-                 f"💵\n\nМетка Фортуны:\nПервый уровень: повышает шанс на джекпот в зависимости от уровня способности (Максимум до 18%),  ")
+                 f"💵\n\nМетка Фортуны:\n\n"
+                 f"Первый уровень:\n Повышает шанс на джекпот до 10%;\nПовышает шанс на срабатывания раба на 5%;\nПовышает шанс на крит вампиризма на 5%;\nС шансом 36,5% позволяет избежать вампиризма и отобрать треть очков которых у вас хотели украсть;\n\n"
+                 f"Второй уровень:\nПовышает шанс на джекпот до 13%;\nПовышает сумму джекпота на 20%\nПовышает шанс на срабатывания раба на 10%;\nС шансом 43% позволяет избежать вампиризма и отобрать половину очков которых у вас хотели украсть;\n\n"
+                 f"Третий уровень:\nПовышает шанс на джекпот до 18%;\nС шансом 50% увеличивает сумму джекпота в 1.5 раза, с шансом 25% в 2 раза, с шансом 10% в 3 раза;\nПовышает шанс на срабатывания раба на 15%\nС шансом 50% позволяет избежать вампиризма и отобрать 75% очков которых у вас хотели украсть;\n\n"
+                 f"Дракула (вампиризм 6 уровня): 50% шанс (или выше, зависит от уровня способности игрока) избежать способность фортуны другого игрока + все остальные бафы от обычной прокачки вампиризма;\n\n"
+                 f"CEO (персонаж 6 уровня): 100% шанс на срабатывание")
 
 @bot.message_handler(commands=['upgrade'])
 @safe_command
-@safe_callback
 def upgrade_command(message):
     user_id = message.from_user.id
     group_id = message.chat.id
@@ -758,11 +793,12 @@ def upgrade_command(message):
     fortuna_love = InlineKeyboardButton(f"🍀 - {fortuna_price}", callback_data=f"upgrade_fortuna|{user_id}|{group_id}")
     markup.add(level_button, farm_button, vamp_button, chronos_button, fortuna_love)
 
-    bot.reply_to(message, f"🟢 Ваши очки: {points}\n❓ Выберите, что вы хотите улучшить:", reply_markup=markup)
+    msg = bot.reply_to(message, f"🟢 Ваши очки: {points}\n\n❓ Что вы хотите улучшить:", reply_markup=markup)
 
 @safe_callback
 def handle_upgrade_callback(call):
     if call.data.startswith("upgrade_character"):
+        bot.answer_callback_query(call.id)
         _, user_id, group_id = call.data.split('|')
         user_id = int(user_id)
         group_id = int(group_id)
@@ -810,6 +846,7 @@ def handle_upgrade_callback(call):
         conn.close()
 
     elif call.data.startswith("upgrade_farm"):
+        bot.answer_callback_query(call.id)
         _, user_id, group_id = call.data.split('|')
         user_id = int(user_id)
         group_id = int(group_id)
@@ -855,6 +892,7 @@ def handle_upgrade_callback(call):
         conn.close()
 
     elif call.data.startswith("upgrade_vampirism"):
+        bot.answer_callback_query(call.id)
         _, user_id, group_id = call.data.split('|')
         user_id = int(user_id)
         group_id = int(group_id)
@@ -908,6 +946,7 @@ def handle_upgrade_callback(call):
         conn.close()
 
     elif call.data.startswith("buy_chronos"):
+        bot.answer_callback_query(call.id)
         _, user_id, group_id = call.data.split('|')
         user_id = int(user_id)
         group_id = int(group_id)
@@ -950,58 +989,52 @@ def handle_upgrade_callback(call):
         conn.close()
 
     elif call.data.startswith("upgrade_fortuna"):
-            _, user_id, group_id = call.data.split('|')
-            user_id = int(user_id)
-            group_id = int(group_id)
+        bot.answer_callback_query(call.id)
+        _, user_id, group_id = call.data.split('|')
+        user_id = int(user_id)
+        group_id = int(group_id)
 
-            if call.from_user.id != user_id:
-                bot.answer_callback_query(call.id, "❌ Не ваша кнопка", show_alert=True)
-                return
+        if call.from_user.id != user_id:
+            bot.answer_callback_query(call.id, "❌ Не ваша кнопка", show_alert=True)
+            return
 
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute(
-                f"SELECT points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price FROM '{group_id}' WHERE user_id = ?",
-                (user_id,))
-            points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price = cursor.fetchone()
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price FROM '{group_id}' WHERE user_id = ?",(user_id,))
+        points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price = cursor.fetchone()
             
-            if points > fortuna_price and fortuna < 3:
-                if fortuna == 0:
-                    points -= fortuna_price
-                    fortuna += 1
-                    fortuna_price = 3300
-                elif fortuna == 1:
-                    points -= fortuna_price
-                    fortuna += 1
-                    fortuna_price = 7000
-                    fortuna_price += 23*(farm_level-1)
-                    
-                cursor.execute(f"UPDATE '{group_id}' SET points = ?, fortuna = ?, fortuna_price = ? WHERE user_id = ?",
-                           (points, fortuna, fortuna_price, user_id))
-                conn.commit()
-                bot.answer_callback_query(call.id, f"✅ Метка фортуны прокачана до {fortuna}!")
-            else:
-                bot.answer_callback_query(call.id,
-                                          "❌ Недостаточно очков для удовлетворения Фортуны или достигнут максимальный уровень.")
+        if points > fortuna_price and fortuna < 3:
+            if fortuna == 0:
+                points -= fortuna_price
+                fortuna += 1
+                fortuna_price = 3300
+            elif fortuna == 1:
+                points -= fortuna_price
+                fortuna += 1
+                fortuna_price = 7000
+                fortuna_price += 23*(farm_level-1)
+
+            cursor.execute(f"UPDATE '{group_id}' SET points = ?, fortuna = ?, fortuna_price = ? WHERE user_id = ?",(points, fortuna, fortuna_price, user_id))
+            conn.commit()
+            bot.answer_callback_query(call.id, f"✅ Метка фортуны прокачана до {fortuna}!")
+        else:
+            bot.answer_callback_query(call.id,"❌ Недостаточно очков для удовлетворения Фортуны или достигнут максимальный уровень.")
             markup = InlineKeyboardMarkup()
-            level_button = InlineKeyboardButton(f"👨🏿‍🦲 - {clprice}",
-                                                callback_data=f"upgrade_character|{user_id}|{group_id}")
+            level_button = InlineKeyboardButton(f"👨🏿‍🦲 - {clprice}",callback_data=f"upgrade_character|{user_id}|{group_id}")
             farm_button = InlineKeyboardButton(f"🏡 - {farmprice}", callback_data=f"upgrade_farm|{user_id}|{group_id}")
-            vamp_button = InlineKeyboardButton(f"🧛🏻‍♀️ - {vamprice}",
-                                               callback_data=f"upgrade_vampirism|{user_id}|{group_id}")
+            vamp_button = InlineKeyboardButton(f"🧛🏻‍♀️ - {vamprice}",callback_data=f"upgrade_vampirism|{user_id}|{group_id}")
             chronos_button = InlineKeyboardButton(f"⏳ - 330", callback_data=f"buy_chronos|{user_id}|{group_id}")
-            fortuna_love = InlineKeyboardButton(f"🍀 - {fortuna_price}",
-                                                callback_data=f"upgrade_fortuna|{user_id}|{group_id}")
+            fortuna_love = InlineKeyboardButton(f"🍀 - {fortuna_price}",callback_data=f"upgrade_fortuna|{user_id}|{group_id}")
             markup.add(level_button, farm_button, vamp_button, chronos_button, fortuna_love)
 
-            bot.edit_message_text(
-                chat_id=call.message.chat.id,
-                message_id=call.message.message_id,
-                text=f"🟢 Ваши очки: {points}\n❓ Выберите, что вы хотите улучшить:",
-                reply_markup=markup
-            )
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=f"🟢 Ваши очки: {points}\n❓ Выберите, что вы хотите улучшить:",
+            reply_markup=markup
+        )
 
-            conn.close()
+        conn.close()
 
 bot.register_callback_query_handler(handle_upgrade_callback, func=lambda call: call.data.startswith(("upgrade", "buy_chronos")))
 bot.register_callback_query_handler(handle_battle_callback, func=lambda call: call.data.startswith("accept_battle"))
