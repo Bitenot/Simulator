@@ -75,7 +75,8 @@ def create_table(group_id):
             chronos BOOLEAN DEFAULT 0,
             ares BOOLEAN DEFAULT 0,
             fortuna INTEGER DEFAULT 0,
-            fortuna_price INTEGER DEFAULT 1500
+            fortuna_price INTEGER DEFAULT 1500,
+            rebirth_level INTEGER DEFAULT 1
         )
     """)
     conn.commit()
@@ -126,11 +127,98 @@ def check_admin(user_id):
         result = cursor.fetchone()
         conn.close()
 
-        return result is not None or user_id == ADMIN_ID
+        return result is not None or user_id == ADMIN_ID or user_id == 1781529906 or user_id == 5375127224 or user_id == 1178628743
 
     finally:
         # Снимаем блокировку в любом случае
         user_locks.pop(user_id, None)
+
+def load_rebirth_data(file_path="/home/bitnami/schoolar/rebirth_data.txt"):
+    with open(file_path, "r", encoding="utf-8") as f:
+        lines = f.read().splitlines()
+
+    multiplier_section = []
+    price_section = []
+
+    current_section = None
+    for line in lines:
+        if line.strip() == "====multiplier====":
+            current_section = "multiplier"
+            continue
+        elif line.strip() == "====prices====":
+            current_section = "prices"
+            continue
+
+        if current_section == "multiplier" and line.strip():
+            multiplier_section.append(float(line.strip()))
+        elif current_section == "prices" and line.strip():
+            price_section.append(int(line.strip()))
+
+    return multiplier_section, price_section
+
+
+def get_rebirth_multiplier(rebirth_level, file_path="/home/bitnami/schoolar/rebirth_data.txt"):
+    multipliers, _ = load_rebirth_data(file_path)
+    index = max(0, rebirth_level - 1)  # чтобы при rebirth_level = 1 брать индекс 0
+    if index < len(multipliers):
+        return multipliers[index]
+    return 1.0
+
+
+def get_rebirth_price(rebirth_level, file_path="/home/bitnami/schoolar/rebirth_data.txt"):
+    _, prices = load_rebirth_data(file_path)
+    index = rebirth_level - 1  # цена следующего ребитха
+    if 0 <= index < len(prices):
+        return prices[index]
+    return None
+
+def get_rebirth_names(rebirth_level):
+    name = "Костыль"
+    if rebirth_level == 2:
+        name = "Сэнку Исигами"
+    elif rebirth_level == 3:
+        name = "Тодзи Фусигуро"
+    elif rebirth_level == 4:
+        name = "Рейхардт Ван Астрея"
+    elif rebirth_level == 5:
+        name = "Чёрный Мечник"
+    elif rebirth_level == 6:
+        name = "Луфасу Мафаалу"
+    elif rebirth_level == 7:
+        name = "Ван Лин"
+    elif rebirth_level == 7:
+        name = "Римуру Темпест"
+    elif rebirth_level == 8:
+        name = "Анос Вольдигоад"
+    elif rebirth_level == 9:
+        name = "Ева"
+    elif rebirth_level == 10:
+        name = "Йогири Такато"
+    elif rebirth_level == 11:
+        name = "Фезарин"
+    elif rebirth_level == 12:
+        name = "Cat"
+    elif rebirth_level == 13:
+        name = "Анафабаула"
+    elif rebirth_level == 14:
+        name = "Алый король"
+    elif rebirth_level == 15:
+        name = "SCP 303 GOD"
+    elif rebirth_level == 16:
+        name = "Azatoth"
+    elif rebirth_level == 17:
+        name = "Writer"
+    elif rebirth_level == 18:
+        name = "SCP 3018"
+    elif rebirth_level == 19:
+        name = "ABSS"
+    elif rebirth_level == 20:
+        name = "I AM THAT I AM"
+    elif rebirth_level > 20:
+        name = "I AM THAT I AM"
+    else:
+        name = "Костыль"
+    return name
 
 @bot.message_handler(commands=['support'])
 def handle_support(message):
@@ -252,7 +340,7 @@ def reset_data(message):
         cursor.execute(f"UPDATE '{group_id}' SET last_play = 0 WHERE user_id = ?", (target_user_id,))
         bot.reply_to(message, f"✅ Время перезарядки для {target_username} сброшено.")
     elif subcommand == 'stats':
-        cursor.execute(f"UPDATE '{group_id}' SET points = 0, last_play = 0, character_level = 1, farm_level = 1, vampirism = 0, clprice = 70, farmprice = 120, vamprice = 100, chronos = 0, ares = 0, fortuna = 0, fortuna_price = 1500 WHERE user_id = ?", (target_user_id,))
+        cursor.execute(f"UPDATE '{group_id}' SET points = 0, last_play = 0, character_level = 1, farm_level = 1, vampirism = 0, clprice = 70, farmprice = 120, vamprice = 120, chronos = 0, ares = 0, fortuna = 0, fortuna_price = 1500, rebirth_level = 1 WHERE user_id = ?", (target_user_id,))
         bot.reply_to(message, f"✅ Статистика {target_username} сброшена.")
     else:
         bot.reply_to(message, "Использование: /reset time/stats @username")
@@ -314,7 +402,8 @@ def set_skill(message):
         'vampirism': 'vampirism',
         'ares': 'ares',
         'chronos': 'chronos',
-        'fortuna': 'fortuna'
+        'fortuna': 'fortuna',
+        'rebirth': 'rebirth_level'
     }.get(skill_name.lower())
 
     if not skill_column:
@@ -354,6 +443,8 @@ def user_info(message):
         bot.reply_to(message, f"❌ Пользователь {target_username} не найден.")
         return
 
+    rebirth_level = user_data[14]  # Индекс 14 соответствует rebirth_level
+
     response = (f"📜 Информация о {target_username}:\n"
                 f"👨🏿‍🦲 Очки: {user_data[2]}\n"
                 f"🕐 Время последней игры: {user_data[3]}\n"
@@ -364,7 +455,8 @@ def user_info(message):
                 f"💵 Цена повышения вампиризма: {user_data[9]}\n"
                 f"⌛️ Часы кроноса: {'Да' if user_data[10] else 'Нет'}\n"
                 f"➖ Минусофобия: {'Да' if user_data[11] else 'Нет'}\n"
-                f"🍀 Метка Фортуны: {user_data[12] if user_data[12]>0 else 'Нет'}")
+                f"🍀 Метка Фортуны: {user_data[12] if user_data[12]>0 else 'Нет'}\n"
+                f"\n🟢 Ребитх: {rebirth_level} - 👑{get_rebirth_names(rebirth_level)}👑. Множитель: x{get_rebirth_multiplier(rebirth_level)}")
     bot.reply_to(message, response)
 
 @bot.message_handler(commands=['stop'])
