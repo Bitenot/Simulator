@@ -65,11 +65,12 @@ def create_table(group_id):
             vampirism INTEGER DEFAULT 0,
             clprice INTEGER DEFAULT 60,
             farmprice INTEGER DEFAULT 85,
-            vamprice INTEGER DEFAULT 170,
+            vamprice INTEGER DEFAULT 120,
             chronos BOOLEAN DEFAULT 0,
             ares BOOLEAN DEFAULT 0,
             fortuna INTEGER DEFAULT 0,
-            fortuna_price INTEGER DEFAULT 1500
+            fortuna_price INTEGER DEFAULT 1500,
+            rebirth_level INTEGER DEFAULT 1
         )
     """)
 
@@ -83,7 +84,8 @@ def create_table(group_id):
         "chronos": "BOOLEAN DEFAULT 0",
         "ares": "BOOLEAN DEFAULT 0",
         "fortuna": "INTEGER DEFAULT 0" ,
-        "fortuna_price": "INTEGER DEFAULT 1500"
+        "fortuna_price": "INTEGER DEFAULT 1500",
+        "rebirth_level": "INTEGER DEFAULT 1"
     }
     for column, column_type in columns.items():
         cursor.execute(f"PRAGMA table_info('{group_id}')")
@@ -126,6 +128,47 @@ def safe_command(func):
             user_locks.pop(user_id, None)
 
     return wrapper
+
+# Чтение rebirth_data и функции доступа к мультипликатору и цене
+
+def load_rebirth_data(file_path="/home/bitnami/schoolar/rebirth_data.txt"):
+    with open(file_path, "r", encoding="utf-8") as f:
+        lines = f.read().splitlines()
+
+    multiplier_section = []
+    price_section = []
+
+    current_section = None
+    for line in lines:
+        if line.strip() == "====multiplier====":
+            current_section = "multiplier"
+            continue
+        elif line.strip() == "====prices====":
+            current_section = "prices"
+            continue
+
+        if current_section == "multiplier" and line.strip():
+            multiplier_section.append(float(line.strip()))
+        elif current_section == "prices" and line.strip():
+            price_section.append(int(line.strip()))
+
+    return multiplier_section, price_section
+
+
+def get_rebirth_multiplier(rebirth_level, file_path="/home/bitnami/schoolar/rebirth_data.txt"):
+    multipliers, _ = load_rebirth_data(file_path)
+    index = max(0, rebirth_level - 1)  # чтобы при rebirth_level = 1 брать индекс 0
+    if index < len(multipliers):
+        return multipliers[index]
+    return 1.0
+
+
+def get_rebirth_price(rebirth_level, file_path="/home/bitnami/schoolar/rebirth_data.txt"):
+    _, prices = load_rebirth_data(file_path)
+    index = rebirth_level - 1  # цена следующего ребитха
+    if 0 <= index < len(prices):
+        return prices[index]
+    return None
 
 def safe_callback(func):
     @wraps(func)
@@ -262,28 +305,98 @@ def check_achievement(points, character_level, vampirism, fortuna, farm_level, u
 
     # Вернём строку, как нужно для телеграм-бота
     return ", ".join(achievements) if achievements else "Нет достижений"
-    
-def calculate_farm_price(farm_level, character_level):
-    if 1 <= farm_level < 3:
-        base_price = 100
-    elif 3 <= farm_level < 5:
-        base_price = 170
-    elif 5 <= farm_level < 7:
-        base_price = 230
-    elif 7 <= farm_level < 10:
-        base_price = 270
-    elif 10 <= farm_level < 15:
-        base_price = 350
-    elif 15 <= farm_level < 30:
-        base_price = 420
-    elif 30 <= farm_level < 50:
-        base_price = 670
-    elif 50 <= farm_level < 70:
-        base_price = 1000
-    elif 70 <= farm_level <= 100:
-        base_price = 1500
+
+def get_rebirth_names(rebirth_level):
+    name = "Костыль"
+    if rebirth_level == 2:
+        name = "Сэнку Исигами"
+    elif rebirth_level == 3:
+        name = "Тодзи Фусигуро"
+    elif rebirth_level == 4:
+        name = "Рейхардт Ван Астрея"
+    elif rebirth_level == 5:
+        name = "Чёрный Мечник"
+    elif rebirth_level == 6:
+        name = "Луфасу Мафаалу"
+    elif rebirth_level == 7:
+        name = "Ван Лин"
+    elif rebirth_level == 7:
+        name = "Римуру Темпест"
+    elif rebirth_level == 8:
+        name = "Анос Вольдигоад"
+    elif rebirth_level == 9:
+        name = "Ева"
+    elif rebirth_level == 10:
+        name = "Йогири Такато"
+    elif rebirth_level == 11:
+        name = "Фезарин"
+    elif rebirth_level == 12:
+        name = "Cat"
+    elif rebirth_level == 13:
+        name = "Анафабаула"
+    elif rebirth_level == 14:
+        name = "Алый король"
+    elif rebirth_level == 15:
+        name = "SCP 303 GOD"
+    elif rebirth_level == 16:
+        name = "Azatoth"
+    elif rebirth_level == 17:
+        name = "Writer"
+    elif rebirth_level == 18:
+        name = "SCP 3018"
+    elif rebirth_level == 19:
+        name = "ABSS"
+    elif rebirth_level == 20:
+        name = "I AM THAT I AM"
+    elif rebirth_level > 20:
+        name = "I AM THAT I AM"
     else:
-        base_price = 2500
+        name = "Костыль"
+    return name
+
+def apply_rebirth_defense(attacker_rebirth, victim_rebirth, stolen_points):
+    attacker_mult = get_rebirth_multiplier(attacker_rebirth)
+    victim_mult = get_rebirth_multiplier(victim_rebirth)
+    rebirth_gap = victim_rebirth - attacker_rebirth
+
+    if rebirth_gap >= 2:
+        # Ослабление кражи из-за разницы
+        reduction_factor = victim_mult / attacker_mult
+        adjusted_steal = stolen_points * reduction_factor
+
+        # Потолок кражи — например: 100 + victim_rebirth * 50
+        cap = 100 + victim_rebirth * 50
+        adjusted_steal = min(adjusted_steal, cap)
+
+        return int(adjusted_steal)
+    return stolen_points
+
+
+def calculate_farm_price(farm_level, character_level, rebirth_level):
+    if 1 <= farm_level < 3:
+        base_price = 50
+    elif 3 <= farm_level < 5:
+        base_price = 120
+    elif 5 <= farm_level < 7:
+        base_price = 160
+    elif 7 <= farm_level < 10:
+        base_price = 240
+    elif 10 <= farm_level < 15:
+        base_price = 290
+    elif 15 <= farm_level < 22:
+        base_price = 320*(rebirth_level/3)
+    elif 22 <= farm_level < 30:
+        base_price = 370*(rebirth_level/3)
+    elif 30 <= farm_level < 50:
+        base_price = 580*(rebirth_level/3)
+    elif 50 <= farm_level < 70:
+        base_price = 950*(rebirth_level/3)
+    elif 70 <= farm_level <= 100:
+        base_price = 1500*(rebirth_level/3)
+    elif 130 <= farm_level <= 150:
+        base_price = 2500*(rebirth_level/3)
+    else:
+        base_price = 5000
 
     level_bonus = 5 * (farm_level - 1)
     boost_map = {
@@ -389,14 +502,14 @@ def play_game(message):
     cursor = conn.cursor()
 
     cursor.execute(
-        f"SELECT points, last_play, character_level, farm_level, vampirism, chronos, ares, fortuna FROM '{group_id}' WHERE user_id = ?",
+        f"SELECT points, last_play, character_level, farm_level, vampirism, chronos, ares, fortuna, rebirth_level FROM '{group_id}' WHERE user_id = ?",
         (user_id,))
     row = cursor.fetchone()
 
     now = int(time.time())
     if row:
-        points, last_play, character_level, farm_level, vampirism, chronos, ares, fortuna = row
-        cooldown_time = 13680 if chronos else 19800
+        points, last_play, character_level, farm_level, vampirism, chronos, ares, fortuna, rebirth_level = row
+        cooldown_time = 9300 if chronos else 14400
         if now - last_play < cooldown_time:
             remaining_time = cooldown_time - (now - last_play)
             hours, remainder = divmod(remaining_time, 3600)
@@ -405,108 +518,155 @@ def play_game(message):
                          f"Не запрягайте своих рабов, подождите {get_time_word(hours, 'час') if hours > 0 else ''}{get_time_word(minutes, 'минута') if minutes > 0 else ''}{get_time_word(seconds, 'секунда')}. У нас 21 век!")
             return
     else:
-        points, last_play, character_level, farm_level, vampirism, chronos, ares, fortuna = 0, 0, 1, 1, 0, 0, 0, 0
+        points, last_play, character_level, farm_level, vampirism, chronos, ares, fortuna, rebirth_level = 0, 0, 1, 1, 0, 0, 0, 0, 1
         cursor.execute(
-            f"INSERT INTO '{group_id}' (user_id, username, points, last_play, character_level, farm_level, vampirism, chronos, ares, fortuna) VALUES (?, ?, 0, 0, 1, 1, 0, 0, 0, 0)",
+            f"INSERT INTO '{group_id}' (user_id, username, points, last_play, character_level, farm_level, vampirism, chronos, ares, fortuna, rebirth_level) VALUES (?, ?, 0, 0, 1, 1, 0, 0, 0, 0, 1)",
             (user_id, username))
-
-    max_points = (10 + (farm_level - 1) * 5) * 2
-    jackpot_boots = True if farm_level < 6 else False
-    jackpot = max_points * 2 * 1.7 * (1.15 if jackpot_boots else 1)
+    rebirth_boost = int(get_rebirth_multiplier(rebirth_level))
+    max_points = (10 + (farm_level - 1) * (10*rebirth_boost)) * (2 if character_level <= 1 else 1) 
+    jackpot_boost = True if farm_level < 6 else False
+    jackpot = max_points * 2 * 1.2 * (1.15 if jackpot_boost else 1)
+    base_jackpot = max_points * 2 * 1.2 * (1.15 if jackpot_boost else 1)
+    fortuna_jackpot = (base_jackpot * (1 + 0.15 * fortuna))
+    jackpot = jackpot * (rebirth_level/2)
+    fortuna_jackpot = fortuna_jackpot * (rebirth_level/2)
+    jackpot_fortuna_counter = 0
     if fortuna == 1:
         jackpot_chance = 0.1
     elif fortuna == 2:
-        jackpot_chance = 0.125
-    elif fortuna >= 3:
         jackpot_chance = 0.15
+    elif fortuna == 3:
+        jackpot_chance = 0.20
     else:
         jackpot_chance = 0.08
 
     if ares:
         if random.random() <= jackpot_chance:
             if fortuna >= 3 and random.random < 0.50:
-                delta = jackpot*1.5
-            elif fortuna >= 3 and random.random < 0.10:
-                delta = jackpot*2
-            elif fortuna >= 2:
-                delta = jackpot * 1.2
+                jackpot_fortuna_counter += 1
+                delta = fortuna_jackpot*1.5
+                bot.reply_to(message, f"🎉 Джекпот! Вы выиграли {int(delta)} очков! 🎉")
+            elif fortuna >= 3 and jackpot_fortuna_counter < 1 and random.random() < 0.25:
+                jackpot_fortuna_counter += 1
+                delta = fortuna_jackpot*2
+                bot.reply_to(message, f"🎉 Джекпот! Вы выиграли {int(delta)} очков! 🎉")
+            elif fortuna >= 3 and jackpot_fortuna_counter < 1 and random.random() < 0.15:
+                jackpot_fortuna_counter += 1
+                delta = fortuna_jackpot*3
+                bot.reply_to(message, f"🎉 Джекпот! Вы выиграли {int(delta)} очков! 🎉")
+            elif fortuna >= 2 and jackpot_fortuna_counter < 1:
+                jackpot_fortuna_counter += 1
+                delta = fortuna_jackpot
+                bot.reply_to(message, f"🎉 Джекпот! Вы выиграли {int(delta)} очков! 🎉")
             else:
                 delta = jackpot
                 bot.reply_to(message, f"🎉 Джекпот! Вы выиграли {int(delta)} очков! 🎉")
         else:
-            delta = random.randint(1, 10 + (farm_level - 1) * 5)
+            delta = random.randint(farm_level * 5 * rebirth_boost, farm_level * 10 * rebirth_boost)
     else:
         if random.random() <= jackpot_chance:
-            if fortuna >= 3 and random.random < 0.5:
-                delta = max_points * 2 * 1.7 * (1.15 if jackpot_boots else 1)
-                delta = delta*2
+            if fortuna >= 3 and random.random < 0.50:
+                jackpot_fortuna_counter += 1
+                delta = fortuna_jackpot * 1.5
+                bot.reply_to(message, f"🎉 Джекпот! Вы выиграли {int(delta)} очков! 🎉")
+            elif fortuna >= 3 and jackpot_fortuna_counter < 1 and random.random < 0.25:
+                jackpot_fortuna_counter += 1
+                delta = fortuna_jackpot * 2
+                bot.reply_to(message, f"🎉 Джекпот! Вы выиграли {int(delta)} очков! 🎉")
+            elif fortuna >= 3 and jackpot_fortuna_counter < 1 and random.random < 0.15:
+                jackpot_fortuna_counter += 1
+                delta = fortuna_jackpot * 3
+                bot.reply_to(message, f"🎉 Джекпот! Вы выиграли {int(delta)} очков! 🎉")
+            elif fortuna >= 2 and jackpot_fortuna_counter < 1:
+                jackpot_fortuna_counter += 1
+                delta = fortuna_jackpot
+                bot.reply_to(message, f"🎉 Джекпот! Вы выиграли {int(delta)} очков! 🎉")
             else:
-                delta = max_points * 2 * 1.7 * (1.15 if jackpot_boots else 1)
-            bot.reply_to(message, f"🎉 Джекпот! Вы выиграли {int(delta)} очков! 🎉")
+                delta = jackpot
+                bot.reply_to(message, f"🎉 Джекпот! Вы выиграли {int(delta)} очков! 🎉")
         elif random.random() < 0.55:
-            delta = random.randint(1, 10 + (farm_level - 1) * 5)
+            delta = random.randint(farm_level * 5 * rebirth_boost, farm_level * 10 * rebirth_boost)
         else:
-            delta = -random.randint(1, 10 + (farm_level - 1) * 5)
-
+            delta = -random.randint(1, 10 + (farm_level - 1) * 5) * (rebirth_boost * 0.5)
+            
+    character_five_level_bonus = 0.15 if character_level >= 5 else 0
+    character_four_level_bonus = 1.5 if character_level >= 4 else 1
+    
     if (character_level > 1 and random.random() < 0.1 + 0.15 * (character_level - 1 + (fortuna*0.05))) or (character_level >= 6):
-        delta += random.randint(1, 10 + (farm_level - 1) * 5)
-        
-    if vampirism > 0 and random.random() <= (0.25+(vampirism*0.03)):
-        cursor.execute(f"SELECT user_id, username, farm_level, points, fortuna FROM '{group_id}' WHERE user_id != ?", (user_id,))
+        delta += random.randint(5 * rebirth_boost, 10 + (farm_level - 1) * 5 * rebirth_boost) * character_four_level_bonus
+
+    stolen_points = 0
+    if vampirism > 0 and random.random() <= (0.25+(vampirism*0.03)+character_five_level_bonus):
+        cursor.execute(f"SELECT user_id, username, farm_level, points, fortuna, rebirth_level FROM '{group_id}' WHERE user_id != ?", (user_id,))
         other_users = cursor.fetchall()
         if other_users:
-            victim_id, victim_username, victim_farm_level, victim_points, victim_fortuna = random.choice(other_users)
-
-            if victim_points <= 0:
-                # Жертва без очков
-                bot.reply_to(message, f"@{victim_username} слишком бомжара, у него нет школьных 😞")
+            other_users = [user for user in other_users if user[1].lower() != "bank"]
+            if not other_users:
+                bot.reply_to(message, "Нет подходящих жертв для вампиризма.")
             else:
-                crit_boost = 0.05 if fortuna >= 1 else 0
-                is_crit = random.random() < (0.20+(vampirism*0.01)+crit_boost)
-                if is_crit:
-                    base_steal = 10 + (vampirism * 3)
-                    max_possible_steal = min(victim_points, victim_farm_level * vampirism + base_steal)
-                    stolen_points = random.randint(1, base_steal)
-                    stolen_points += round(victim_points * (0.10+(0.0125*vampirism)))  # 10% при крите
-                else:
-                    base_steal = 7 + (vampirism * 3)
-                    max_possible_steal = min(victim_points, victim_farm_level * vampirism + base_steal)
-                    percentage_steal = victim_points * (0.05+(0.0125*vampirism))
-                    stolen_points = random.randint(1, base_steal)
-                    stolen_points += round(percentage_steal)
+                victim_id, victim_username, victim_farm_level, victim_points, victim_fortuna, victim_rebirth = random.choice(other_users)
 
-                # Минусуем жертву и добавляем очки игроку
-                if (victim_fortuna >= 1 and random.random() <= 30+(victim_fortuna*0.065)) or victim_id == 1766101476:
-                    if vampirism >= 6 and random.random() <= 0.5:
+                if victim_points <= 0:
+                    # Жертва без очков
+                    bot.reply_to(message, f"@{victim_username} слишком бомжара, у него нет школьных 😞")
+                else:
+                    crit_boost = 0.05 if fortuna >= 1 else 0
+                    is_crit = random.random() < (0.20+(vampirism*0.01)+crit_boost)
+                    is_double_crit = random.random() < 0.25
+                    farm_level_vampirism_bonus = random.randint(2*vampirism, farm_level*2)
+                    if is_crit:
+                        base_steal = 10 + (vampirism * 3) + farm_level_vampirism_bonus
+                        stolen_points = random.randint(1, base_steal)
+                        stolen_points = apply_rebirth_defense(rebirth_level, victim_rebirth, stolen_points)
+                        if vampirism >= 3 and is_double_crit:
+                            stolen_points += round(victim_points * (0.20 + (0.01 * vampirism)))
+                            stolen_points = apply_rebirth_defense(rebirth_level, victim_rebirth, stolen_points)
+                        else:
+                            stolen_points += round(victim_points * (0.10+(0.05*vampirism)))
+                            stolen_points = apply_rebirth_defense(rebirth_level, victim_rebirth, stolen_points)
+                    else:
+                        base_steal = 10 + (vampirism * 3) + farm_level_vampirism_bonus
+                        percentage_steal = victim_points * (0.05+(0.005*vampirism))
+                        stolen_points = random.randint(1, base_steal)
+                        stolen_points += round(percentage_steal)
+                        stolen_points = apply_rebirth_defense(rebirth_level, victim_rebirth, stolen_points)
+
+                    # Минусуем жертву и добавляем очки игроку
+                    if victim_fortuna >= 1 and random.random() <= (0.30+(victim_fortuna*0.065))+character_five_level_bonus:
+                        if vampirism >= 6 and random.random() <= 0.5:
+                            cursor.execute(f"UPDATE '{group_id}' SET points = points - ? WHERE user_id = ?", (stolen_points, victim_id))
+                            cursor.execute(f"UPDATE '{group_id}' SET points = points + ? WHERE user_id = ?", (stolen_points, user_id))
+                            if stolen_points > 0:
+                                crit_text = " (КРИТ! 💥)" if is_crit else ""
+                                bot.reply_to(message, f"{crit_text}\n\nВы спиздили {stolen_points} Школьных у @{victim_username}")
+                                always_cashback_if_fortuna = victim_fortuna * 0.165
+                                if victim_fortuna >= 1:
+                                    fortuna_cashback = stolen_points * always_cashback_if_fortuna
+                                    cursor.execute(f"UPDATE '{group_id}' SET points = points + ? WHERE user_id = ?", (fortuna_cashback, victim_id))
+                            else:
+                                bot.reply_to(message, f"@{victim_username} оказался бомжарой — вы ничего не получили.")
+                        else:
+                            if fortuna == 1:
+                                stolen_points = stolen_points * 0.35
+                            elif fortuna == 2:
+                                stolen_points = stolen_points * 0.55
+                            elif fortuna == 3:
+                                stolen_points = stolen_points * 0.85
+                            cursor.execute(f"UPDATE '{group_id}' SET points = points - ? WHERE user_id = ?", (stolen_points, user_id))
+                            cursor.execute(f"UPDATE '{group_id}' SET points = points + ? WHERE user_id = ?", (stolen_points, victim_id))
+                            if stolen_points > 0:
+                                crit_text = " (КРИТ! 💥)" if is_crit else ""
+                                bot.reply_to(message, f"{crit_text}\n\n🍀 Фортуна благославила {victim_username}!\nУ вас отобрали {stolen_points} Школьных.")
+                            else:
+                                bot.reply_to(message, f"@{victim_username} оказался бомжарой — вы ничего не получили.")
+                    else:
                         cursor.execute(f"UPDATE '{group_id}' SET points = points - ? WHERE user_id = ?", (stolen_points, victim_id))
                         cursor.execute(f"UPDATE '{group_id}' SET points = points + ? WHERE user_id = ?", (stolen_points, user_id))
                         if stolen_points > 0:
                             crit_text = " (КРИТ! 💥)" if is_crit else ""
                             bot.reply_to(message, f"{crit_text}\n\nВы спиздили {stolen_points} Школьных у @{victim_username}")
                         else:
-                            bot.reply_to(message, f"@{victim_username} оказался бомжарой — вы ничего не получили.")
-                    else:
-                        if fortuna == 1:
-                            stolen_points = stolen_points * 0.33
-                        elif fortuna == 2:
-                            stolen_points = stolen_points * 0.5
-                        elif fortuna == 3:
-                            stolen_points = stolen_points * 0.75
-                        cursor.execute(f"UPDATE '{group_id}' SET points = points - ? WHERE user_id = ?", (stolen_points, user_id))
-                        cursor.execute(f"UPDATE '{group_id}' SET points = points + ? WHERE user_id = ?", (stolen_points, victim_id))
-                        if stolen_points > 0:
-                            crit_text = " (КРИТ! 💥)" if is_crit else ""
-                            bot.reply_to(message, f"{crit_text}\n\n🍀 Фортуна благославила {victim_username}!\nУ вас отобрали {stolen_points} Школьных.")
-                        else:
-                            bot.reply_to(message, f"@{victim_username} оказался бомжарой — вы ничего не получили.")
-                else:
-                    cursor.execute(f"UPDATE '{group_id}' SET points = points - ? WHERE user_id = ?", (stolen_points, victim_id))
-                    cursor.execute(f"UPDATE '{group_id}' SET points = points + ? WHERE user_id = ?", (stolen_points, user_id))
-                    if stolen_points > 0:
-                        crit_text = " (КРИТ! 💥)" if is_crit else ""
-                        bot.reply_to(message, f"{crit_text}\n\nВы спиздили {stolen_points} Школьных у @{victim_username}")
-                    else:
-                         bot.reply_to(message, f"@{victim_username} оказался бомжарой — вы ничего не получили.")
+                             bot.reply_to(message, f"@{victim_username} оказался бомжарой — вы ничего не получили.")
 
     points += delta
 
@@ -522,7 +682,7 @@ def play_game(message):
 
     def check_delta(points):
         if points > 0:
-            text = "появилось"
+            text = "родилось"
         else:
             text = "умерло"
         return text
@@ -543,7 +703,7 @@ def show_stats(message):
     cursor = conn.cursor()
 
     cursor.execute(
-        f"SELECT username, points, character_level, farm_level, vampirism, chronos, ares, fortuna, user_id FROM '{group_id}' WHERE user_id = ?",
+        f"SELECT username, points, character_level, farm_level, vampirism, chronos, ares, fortuna, user_id, rebirth_level FROM '{group_id}' WHERE user_id = ?",
         (user_id,))
     stats = cursor.fetchone()
     conn.close()
@@ -552,7 +712,7 @@ def show_stats(message):
         bot.reply_to(message, "😰 Вы ещё не играли!")
         return
 
-    username, points, character_level, farm_level, vampirism, chronos, ares, fortuna, user_id = stats
+    username, points, character_level, farm_level, vampirism, chronos, ares, fortuna, user_id, rebirth_level = stats
     achievement_text = check_achievement(points, character_level, vampirism, fortuna, farm_level, user_id)
     
 
@@ -564,7 +724,8 @@ def show_stats(message):
                f"➖ Минусофобия: {'Есть' if ares else 'Нету'}\n" \
                f"⌛️ Часы Кроноса: {'Есть' if chronos else 'Нету'}\n"\
                f"🍀 Метка Фортуны: {fortuna if fortuna > 0 else 'Нету'}\n\n"\
-               f"🟡 Достижения: \n{achievement_text}"
+               f"🟡 Достижения: \n{achievement_text}"\
+               f"\n🟢 Ребитх: {rebirth_level} - 👑{get_rebirth_names(rebirth_level)}👑. Множитель: x{get_rebirth_multiplier(rebirth_level)}"
     bot.reply_to(message, response)
 
 @bot.message_handler(commands=['localtop'])
@@ -627,17 +788,6 @@ def global_top(message):
     conn.close()
     response = "🏆 Глобальный рейтинг:\n\n" + (top_list if top_list else "🤬 Пока никто не играет.")
     bot.reply_to(message, response)
-
-
-@bot.message_handler(commands=['help'])
-@safe_command
-def help_command(message):
-    bot.reply_to(message,
-                 "🏡 Прокачать ферму Школьных - /play.\n🧐 Просмотреть статистику - /statistic.\n🏆 Глобальный топ фермеров - /top.\n"
-                 "📖 Список команд: /commands.\n"
-                 "⚔️ Бросить вызов другому игроку - /battlez @username.\n"
-                 "⬆️ Прокачать уровни - /upgrade")
-
 
 @bot.message_handler(commands=['events'])
 @safe_command
@@ -755,18 +905,189 @@ def handle_battle(challenger_id, target_id, group_id, call=None, auto_accept=Fal
 @safe_command
 def help_command(message):
     bot.reply_to(message,
-                 "💵\n\nПрокачка рабовладельца даёт вам +15% шанса к получению дополнительных рабов на свою ферму за каждый уровень от 1 до 10 + очки от уровня фермы. Максимум: 6.\n\nПрокачка фермы повышает максимально возможное число получения и уменьшения рабов за 1 игру на 5 за каждый уровень.\n\nСпособность вампиризм даёт 30% шанс выкачать из рандомного игрока рандомно от 7 очков + ? за каждый уровень и уровень фермы +5% баланса жертвы, шанс 20%(+1% за уровень вампиризма) на крит - 10% от баланса жертвы. Максимум: 6\n\nЧасы кроноса снижают время перезарядки /play до 3ч 48м\n\n")
+                 "f💵\n\nПрокачка рабовладельца даёт вам +15% шанса к получению дополнительных рабов на свою ферму, сыграв ещё раз автоматически. 5 уровень повышает шанс на срабатывание вампиризма и защиты фортуны на 15%. 6 уровень имеет 100% шанс на срабатывание и умножает очки на 1.5 от этой попытки. Однако бонус к минимальному количество от фермы уменьшен до 3 за уровень для этой попытки. Максимум: 6.\n\n"
+                 "Прокачка фермы повышает максимально возможное число получения и уменьшения рабов за 1 игру на 10 за каждый уровень, а минимальное на 5.\n\n"
+                 "Способность вампиризм даёт 30% (без доп. бонусов) шанс выкачать из рандомного игрока рандомно от 7 очков + (вампиризм * 3) за каждый уровень и уровень фермы +5%(+0.5% за лвл вампиризма) баланса жертвы, шанс 20%(+1% за уровень вампиризма) на крит - 10%(+0.5% за уровень вампиризма) от баланса жертвы. Максимум: 6"
+                 "\n\nЧасы кроноса снижают время перезарядки /play до 3ч 48м\n\n"
+                 "Ребитх: умножает вашу прибыль НАВСЕГДА на 2 за каждый лвл (на третьем 4, на четвером 8, на пятом 16 и так далее). Сбрасывает остальную статистику")
 
 @bot.message_handler(commands=['superskills'])
 @safe_command
 def help_command(message):
     bot.reply_to(message,
                  f"💵\n\nМетка Фортуны:\n\n"
-                 f"Первый уровень:\n Повышает шанс на джекпот до 10%;\nПовышает шанс на срабатывания раба на 5%;\nПовышает шанс на крит вампиризма на 5%;\nС шансом 36,5% позволяет избежать вампиризма и отобрать треть очков которых у вас хотели украсть;\n\n"
-                 f"Второй уровень:\nПовышает шанс на джекпот до 13%;\nПовышает сумму джекпота на 20%\nПовышает шанс на срабатывания раба на 10%;\nС шансом 43% позволяет избежать вампиризма и отобрать половину очков которых у вас хотели украсть;\n\n"
-                 f"Третий уровень:\nПовышает шанс на джекпот до 18%;\nС шансом 50% увеличивает сумму джекпота в 1.5 раза, с шансом 25% в 2 раза, с шансом 10% в 3 раза;\nПовышает шанс на срабатывания раба на 15%\nС шансом 50% позволяет избежать вампиризма и отобрать 75% очков которых у вас хотели украсть;\n\n"
+                 f"Первый уровень:\n Повышает шанс на джекпот до 10%;\nПовышает сумму джекпота на 10%;\nПовышает шанс на срабатывания раба на 5%;\nПовышает шанс на крит вампиризма на 5%;\nС шансом 36,5% позволяет избежать вампиризма и отобрать 35% очков которых у вас хотели украсть;\nВсегда возвращает 16.5% от украденных у вас очков (без трат для соперника)\n\n"
+                 f"Второй уровень:\nПовышает шанс на джекпот до 15%;\nПовышает сумму джекпота на 20%\nПовышает шанс на срабатывания раба на 10%;\nС шансом 55% позволяет избежать вампиризма и отобрать половину очков которых у вас хотели украсть;\nВсегда возвращает 33% от украденных у вас очков (без трат для соперника)\n\n"
+                 f"Третий уровень:\nПовышает шанс на джекпот до 20%;\nПовышает сумму джекпота на 30%;\nС шансом 50% увеличивает сумму джекпота в 1.5 раза, с шансом 25% в 2 раза, с шансом 15% в 3 раза;\nПовышает шанс на срабатывания раба на 15%\nС шансом 50% позволяет избежать вампиризма и отобрать 85% очков которых у вас хотели украсть;\nВсегда возвращает 49.5% от украденных у вас очков (без трат для соперника)\n\n"
                  f"Дракула (вампиризм 6 уровня): 50% шанс (или выше, зависит от уровня способности игрока) избежать способность фортуны другого игрока + все остальные бафы от обычной прокачки вампиризма;\n\n"
                  f"CEO (персонаж 6 уровня): 100% шанс на срабатывание")
+
+@bot.message_handler(commands=['transfer'])
+@safe_command
+def transfer_points(message):
+    try:
+        # Разбиваем команду на части
+        parts = message.text.split()
+        if len(parts) != 3:
+            bot.reply_to(message, "❌ Неправильный формат. Используйте: /transfer @username сумма")
+            return
+
+        target_username = parts[1]
+        if not target_username.startswith('@'):
+            bot.reply_to(message, "❌ Имя пользователя должно начинаться с @")
+            return
+
+        target_username = target_username[1:]  # Убираем @
+        amount = int(parts[2])
+
+        if amount <= 0:
+            bot.reply_to(message, "❌ Сумма должна быть положительной")
+            return
+
+        sender_id = message.from_user.id
+        sender_username = message.from_user.username or f"user_{sender_id}"
+        group_id = message.chat.id
+
+        # Проверяем баланс отправителя
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT points FROM '{group_id}' WHERE user_id = ?", (sender_id,))
+        sender_balance = cursor.fetchone()
+
+        if not sender_balance:
+            bot.reply_to(message, "❌ Вы еще не играли в этой группе!")
+            conn.close()
+            return
+
+        sender_balance = sender_balance[0]
+        if sender_balance < amount:
+            bot.reply_to(message, f"❌ Недостаточно средств. Ваш баланс: {sender_balance}")
+            conn.close()
+            return
+
+        # Проверяем существование получателя
+        cursor.execute(f"SELECT user_id, points FROM '{group_id}' WHERE username = ?", (target_username,))
+        recipient = cursor.fetchone()
+        conn.close()
+
+        if not recipient:
+            bot.reply_to(message, f"❌ Пользователь @{target_username} не найден в этой группе")
+            return
+
+        recipient_id, recipient_balance = recipient
+
+        if sender_id == recipient_id:
+            bot.reply_to(message, "❌ Нельзя переводить себе")
+            return
+
+        # Создаем кнопки подтверждения
+        markup = InlineKeyboardMarkup()
+        confirm_button = InlineKeyboardButton("✅ Подтвердить", callback_data=f"confirm_transfer|{sender_id}|{recipient_id}|{amount}|{group_id}")
+        cancel_button = InlineKeyboardButton("❌ Отменить", callback_data=f"cancel_transfer|{sender_id}|{group_id}")
+        markup.add(confirm_button, cancel_button)
+
+        bot.reply_to(message, 
+                    f"⚠️ Подтвердите перевод:\n\n"
+                    f"🔹 Отправитель: @{sender_username} (ID: {sender_id})\n"
+                    f"🔹 Получатель: @{target_username} (ID: {recipient_id})\n"
+                    f"🔹 Сумма: {amount} Школьных\n\n"
+                    f"Ваш баланс после перевода: {sender_balance - amount}",
+                    reply_markup=markup)
+
+    except ValueError:
+        bot.reply_to(message, "❌ Сумма должна быть числом")
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ Произошла ошибка: {str(e)}")
+
+@safe_callback
+def handle_transfer_callback(call):
+    if call.data.startswith("confirm_transfer"):
+        _, sender_id, recipient_id, amount, group_id = call.data.split('|')
+        sender_id = int(sender_id)
+        recipient_id = int(recipient_id)
+        amount = int(amount)
+        group_id = int(group_id)
+
+        if call.from_user.id != sender_id:
+            bot.answer_callback_query(call.id, "❌ Это не ваш перевод для подтверждения")
+            return
+
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        try:
+            # Проверяем баланс отправителя снова (на случай изменений)
+            cursor.execute(f"SELECT username, points FROM '{group_id}' WHERE user_id = ?", (sender_id,))
+            sender_username, sender_balance = cursor.fetchone()
+
+            if sender_balance < amount:
+                bot.answer_callback_query(call.id, "❌ Недостаточно средств", show_alert=True)
+                conn.close()
+                return
+
+            # Получаем данные получателя
+            cursor.execute(f"SELECT username, points FROM '{group_id}' WHERE user_id = ?", (recipient_id,))
+            recipient_username, recipient_balance = cursor.fetchone()
+
+            # Выполняем перевод
+            cursor.execute(f"UPDATE '{group_id}' SET points = points - ? WHERE user_id = ?", (amount, sender_id))
+            cursor.execute(f"UPDATE '{group_id}' SET points = points + ? WHERE user_id = ?", (amount, recipient_id))
+            conn.commit()
+
+            # Формируем чек
+            receipt = (
+                f"📝 Чек о переводе:\n\n"
+                f"🔹 Отправитель: @{sender_username} (ID: {sender_id})\n"
+                f"🔹 Получатель: @{recipient_username} (ID: {recipient_id})\n"
+                f"🔹 Сумма: {amount} Школьных\n\n"
+                f"💰 Новый баланс отправителя: {sender_balance - amount}\n"
+                f"💰 Новый баланс получателя: {recipient_balance + amount}"
+            )
+
+            # Отправляем чек в чат
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=receipt
+            )
+
+            # Уведомляем получателя, если он не отправитель сообщения
+            if recipient_id != sender_id:
+                try:
+                    bot.send_message(
+                        recipient_id,
+                        f"💸 Вам перевели {amount} Школьных от @{sender_username}\n"
+                        f"Ваш новый баланс: {recipient_balance + amount}"
+                    )
+                except Exception as e:
+                    print(f"Не удалось отправить уведомление получателю: {e}")
+
+            bot.answer_callback_query(call.id, "✅ Перевод выполнен")
+
+        except Exception as e:
+            conn.rollback()
+            bot.answer_callback_query(call.id, f"❌ Ошибка перевода: {str(e)}", show_alert=True)
+            raise
+        finally:
+            conn.close()
+
+    elif call.data.startswith("cancel_transfer"):
+        _, sender_id, group_id = call.data.split('|')
+        sender_id = int(sender_id)
+
+        if call.from_user.id != sender_id:
+            bot.answer_callback_query(call.id, "❌ Это не ваш перевод для отмены")
+            return
+
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text="❌ Перевод отменен"
+        )
+        bot.answer_callback_query(call.id, "❌ Перевод отменен")
+
+# Регистрируем обработчик callback-ов для transfer
+bot.register_callback_query_handler(handle_transfer_callback, func=lambda call: call.data.startswith(("confirm_transfer", "cancel_transfer")))
 
 @bot.message_handler(commands=['upgrade'])
 @safe_command
@@ -778,11 +1099,11 @@ def upgrade_command(message):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        f"SELECT points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price FROM '{group_id}' WHERE user_id = ?",
+        f"SELECT points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price, rebirth_level FROM '{group_id}' WHERE user_id = ?",
         (user_id,))
-    points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price = cursor.fetchone()
-
-    farmprice = calculate_farm_price(farm_level, character_level)
+    points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price, rebirth_level = cursor.fetchone()
+    rebirth_boost = int(get_rebirth_multiplier(rebirth_level))
+    farmprice = calculate_farm_price(farm_level, character_level, rebirth_level)
 
     # === Кнопки ===
     markup = InlineKeyboardMarkup()
@@ -791,8 +1112,8 @@ def upgrade_command(message):
     vamp_button = InlineKeyboardButton(f"🧛🏻‍♀️ - {vamprice}", callback_data=f"upgrade_vampirism|{user_id}|{group_id}")
     chronos_button = InlineKeyboardButton(f"⏳ - 330", callback_data=f"buy_chronos|{user_id}|{group_id}")
     fortuna_love = InlineKeyboardButton(f"🍀 - {fortuna_price}", callback_data=f"upgrade_fortuna|{user_id}|{group_id}")
-    markup.add(level_button, farm_button, vamp_button, chronos_button, fortuna_love)
-
+    rebirth = InlineKeyboardButton(f"👑 - {get_rebirth_price(rebirth_level)}",callback_data=f"upgrade_rebirth|{user_id}|{group_id}")
+    markup.add(level_button, farm_button, vamp_button, chronos_button, fortuna_love, rebirth)
     msg = bot.reply_to(message, f"🟢 Ваши очки: {points}\n\n❓ Что вы хотите улучшить:", reply_markup=markup)
 
 @safe_callback
@@ -810,17 +1131,22 @@ def handle_upgrade_callback(call):
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
-            f"SELECT points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price FROM '{group_id}' WHERE user_id = ?",
+            f"SELECT points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price, rebirth_level FROM '{group_id}' WHERE user_id = ?",
             (user_id,))
-        points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price = cursor.fetchone()
-
+        points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price, rebirth_level = cursor.fetchone()
+        rebirth_boost = int(get_rebirth_multiplier(rebirth_level))
         if points >= clprice and character_level < 6:
-            if character_level == 5:
-                clprice = 1500
-            elif character_level < 5:
+            if character_level < 4:
                 points -= clprice
                 character_level += 1
                 clprice = int(clprice * 1.25)
+            elif character_level == 4:
+                points -= clprice
+                character_level += 1
+                clprice = 1500*(rebirth_boost/2)
+            elif character_level == 5:
+                points -= clprice
+                character_level += 1
             cursor.execute(f"UPDATE '{group_id}' SET points = ?, character_level = ?, clprice = ? WHERE user_id = ?",
                            (points, character_level, clprice, user_id))
             conn.commit()
@@ -835,7 +1161,8 @@ def handle_upgrade_callback(call):
         vamp_button = InlineKeyboardButton(f"🧛🏻‍♀️ - {vamprice}", callback_data=f"upgrade_vampirism|{user_id}|{group_id}")
         chronos_button = InlineKeyboardButton(f"⏳ - 330", callback_data=f"buy_chronos|{user_id}|{group_id}")
         fortuna_love = InlineKeyboardButton(f"🍀 - {fortuna_price}", callback_data=f"upgrade_fortuna|{user_id}|{group_id}")
-        markup.add(level_button, farm_button, vamp_button, chronos_button, fortuna_love)
+        rebirth = InlineKeyboardButton(f"👑 - {get_rebirth_price(rebirth_level)}",callback_data=f"upgrade_rebirth|{user_id}|{group_id}")
+        markup.add(level_button, farm_button, vamp_button, chronos_button, fortuna_love, rebirth)
 
         bot.edit_message_text(
             chat_id=call.message.chat.id,
@@ -858,11 +1185,11 @@ def handle_upgrade_callback(call):
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
-            f"SELECT points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price FROM '{group_id}' WHERE user_id = ?",
+            f"SELECT points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price, rebirth_level FROM '{group_id}' WHERE user_id = ?",
             (user_id,))
-        points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price = cursor.fetchone()
-
-        new_farmprice = calculate_farm_price(farm_level, character_level)
+        points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price, rebirth_level = cursor.fetchone()
+        rebirth_boost = int(get_rebirth_multiplier(rebirth_level))
+        new_farmprice = calculate_farm_price(farm_level, character_level, rebirth_level)
 
         if points >= new_farmprice:
             points -= new_farmprice
@@ -881,7 +1208,8 @@ def handle_upgrade_callback(call):
         vamp_button = InlineKeyboardButton(f"🧛🏻‍♀️ - {vamprice}",callback_data=f"upgrade_vampirism|{user_id}|{group_id}")
         chronos_button = InlineKeyboardButton(f"⏳ - 330", callback_data=f"buy_chronos|{user_id}|{group_id}")
         fortuna_love = InlineKeyboardButton(f"🍀 - {fortuna_price}",callback_data=f"upgrade_fortuna|{user_id}|{group_id}")
-        markup.add(level_button, farm_button, vamp_button, chronos_button, fortuna_love)
+        rebirth = InlineKeyboardButton(f"👑 - {get_rebirth_price(rebirth_level)}",callback_data=f"upgrade_rebirth|{user_id}|{group_id}")
+        markup.add(level_button, farm_button, vamp_button, chronos_button, fortuna_love, rebirth)
 
         bot.edit_message_text(
             chat_id=call.message.chat.id,
@@ -904,45 +1232,48 @@ def handle_upgrade_callback(call):
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
-            f"SELECT points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price FROM '{group_id}' WHERE user_id = ?",
+            f"SELECT points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price, rebirth_level FROM '{group_id}' WHERE user_id = ?",
             (user_id,))
-        points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price = cursor.fetchone()
-
+        points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price, rebirth_level = cursor.fetchone()
+        rebirth_boost = int(get_rebirth_multiplier(rebirth_level))
         if points >= vamprice and vampirism < 6:
-                if vampirism < 5:
-                    points -= vamprice
-                    vampirism += 1
-                    vamprice = int(vamprice * 1.825)
-                    vamprice += 5*(farm_level - 1)
-                elif vampirism == 5:
-                    points -= vamprice
-                    vampirism += 1
-                    vamprice = 3000
-                    vamprice += 7*(farm_level - 1)
+            if vampirism < 5:
+                points -= vamprice
+                vampirism += 1
+                vamprice = int(vamprice * 1.33 * (rebirth_level/2))
+                cursor.execute(
+                f"UPDATE '{group_id}' SET points = ?, vampirism = ?, vamprice = ? WHERE user_id = ?",
+                (points, vampirism, vamprice, user_id)
+            )
+            elif vampirism == 5:
+                points -= vamprice
+                vampirism += 1
+                vamprice = 1750 * (rebirth_boost / 2)
+                cursor.execute(
+                f"UPDATE '{group_id}' SET points = ?, vampirism = ?, vamprice = ? WHERE user_id = ?",
+                (points, vampirism, vamprice, user_id)
+            )
+            conn.commit()
+            bot.answer_callback_query(call.id, f"✅ Вампиризм прокачан до {vampirism}!")
+    
+        else:
+            bot.answer_callback_query(call.id, f"❌ Недостаточно очков для прокачки вампиризма или достигнут максимальный уровень.")
 
-                    cursor.execute(f"UPDATE '{group_id}' SET points = ?, vampirism = ?, vamprice = ? WHERE user_id = ?",
-                                   (points, vampirism, vamprice, user_id))
-                    conn.commit()
-                    bot.answer_callback_query(call.id, f"✅ Вампиризм прокачан до {vampirism}!")
+        markup = InlineKeyboardMarkup()
+        level_button = InlineKeyboardButton(f"👨🏿‍🦲 - {clprice}",callback_data=f"upgrade_character|{user_id}|{group_id}")
+        farm_button = InlineKeyboardButton(f"🏡 - {farmprice}", callback_data=f"upgrade_farm|{user_id}|{group_id}")
+        vamp_button = InlineKeyboardButton(f"🧛🏻‍♀️ - {vamprice}",callback_data=f"upgrade_vampirism|{user_id}|{group_id}")
+        chronos_button = InlineKeyboardButton(f"⏳ - 330", callback_data=f"buy_chronos|{user_id}|{group_id}")
+        fortuna_love = InlineKeyboardButton(f"🍀 - {fortuna_price}",callback_data=f"upgrade_fortuna|{user_id}|{group_id}")
+        rebirth = InlineKeyboardButton(f"👑 - {get_rebirth_price(rebirth_level)}",callback_data=f"upgrade_rebirth|{user_id}|{group_id}")
+        markup.add(level_button, farm_button, vamp_button, chronos_button, fortuna_love, rebirth)
 
-                else:
-                    bot.answer_callback_query(call.id,
-                                              "❌ Недостаточно очков для прокачки вампиризма или достигнут максимальный уровень.")
-
-                markup = InlineKeyboardMarkup()
-                level_button = InlineKeyboardButton(f"👨🏿‍🦲 - {clprice}",callback_data=f"upgrade_character|{user_id}|{group_id}")
-                farm_button = InlineKeyboardButton(f"🏡 - {farmprice}", callback_data=f"upgrade_farm|{user_id}|{group_id}")
-                vamp_button = InlineKeyboardButton(f"🧛🏻‍♀️ - {vamprice}",callback_data=f"upgrade_vampirism|{user_id}|{group_id}")
-                chronos_button = InlineKeyboardButton(f"⏳ - 330", callback_data=f"buy_chronos|{user_id}|{group_id}")
-                fortuna_love = InlineKeyboardButton(f"🍀 - {fortuna_price}",callback_data=f"upgrade_fortuna|{user_id}|{group_id}")
-                markup.add(level_button, farm_button, vamp_button, chronos_button, fortuna_love)
-
-                bot.edit_message_text(
-                    chat_id=call.message.chat.id,
-                    message_id=call.message.message_id,
-                    text=f"🟢 Ваши очки: {points}\n❓ Выберите, что вы хотите улучшить:",
-                    reply_markup=markup
-                )
+        bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        text=f"🟢 Ваши очки: {points}\n❓ Выберите, что вы хотите улучшить:",
+        reply_markup=markup
+        )
         conn.close()
 
     elif call.data.startswith("buy_chronos"):
@@ -958,9 +1289,9 @@ def handle_upgrade_callback(call):
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
-            f"SELECT points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price FROM '{group_id}' WHERE user_id = ?",
+            f"SELECT points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price, rebirth_level FROM '{group_id}' WHERE user_id = ?",
             (user_id,))
-        points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price = cursor.fetchone()
+        points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price, rebirth_level = cursor.fetchone()
 
         if points >= 330 and not chronos:
             points -= 330
@@ -978,8 +1309,8 @@ def handle_upgrade_callback(call):
         vamp_button = InlineKeyboardButton(f"🧛🏻‍♀️ - {vamprice}",callback_data=f"upgrade_vampirism|{user_id}|{group_id}")
         chronos_button = InlineKeyboardButton(f"⏳ - 330", callback_data=f"buy_chronos|{user_id}|{group_id}")
         fortuna_love = InlineKeyboardButton(f"🍀 - {fortuna_price}",callback_data=f"upgrade_fortuna|{user_id}|{group_id}")
-        markup.add(level_button, farm_button, vamp_button, chronos_button, fortuna_love)
-
+        rebirth = InlineKeyboardButton(f"👑 - {get_rebirth_price(rebirth_level)}",callback_data=f"upgrade_rebirth|{user_id}|{group_id}")
+        markup.add(level_button, farm_button, vamp_button, chronos_button, fortuna_love, rebirth)
         bot.edit_message_text(
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
@@ -1000,32 +1331,41 @@ def handle_upgrade_callback(call):
 
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute(f"SELECT points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price FROM '{group_id}' WHERE user_id = ?",(user_id,))
-        points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price = cursor.fetchone()
-            
+        cursor.execute(f"SELECT points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price, rebirth_level FROM '{group_id}' WHERE user_id = ?",(user_id,))
+        points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price, rebirth_level = cursor.fetchone()
+        rebirth_boost = int(get_rebirth_multiplier(rebirth_level))
         if points > fortuna_price and fortuna < 3:
             if fortuna == 0:
+                fortuna_price * (rebirth_level/2)
                 points -= fortuna_price
                 fortuna += 1
-                fortuna_price = 3300
+                fortuna_price = 2700
+                fortuna_price += fortuna_price * (rebirth_level/2)
+                cursor.execute(f"UPDATE '{group_id}' SET points = ?, fortuna = ?, fortuna_price = ? WHERE user_id = ?",(points, fortuna, fortuna_price, user_id))
             elif fortuna == 1:
                 points -= fortuna_price
                 fortuna += 1
-                fortuna_price = 7000
-                fortuna_price += 23*(farm_level-1)
-
-            cursor.execute(f"UPDATE '{group_id}' SET points = ?, fortuna = ?, fortuna_price = ? WHERE user_id = ?",(points, fortuna, fortuna_price, user_id))
+                fortuna_price = 5000
+                fortuna_price += fortuna_price * (rebirth_level/2)
+                cursor.execute(f"UPDATE '{group_id}' SET points = ?, fortuna = ?, fortuna_price = ? WHERE user_id = ?",(points, fortuna, fortuna_price, user_id))
+            elif fortuna == 2:
+                points -= fortuna_price
+                fortuna += 1
+                fortuna_price += fortuna_price * (rebirth_level/2)
+                cursor.execute(f"UPDATE '{group_id}' SET points = ?, fortuna = ?, fortuna_price = ? WHERE user_id = ?",(points, fortuna, fortuna_price, user_id))
             conn.commit()
             bot.answer_callback_query(call.id, f"✅ Метка фортуны прокачана до {fortuna}!")
         else:
             bot.answer_callback_query(call.id,"❌ Недостаточно очков для удовлетворения Фортуны или достигнут максимальный уровень.")
-            markup = InlineKeyboardMarkup()
-            level_button = InlineKeyboardButton(f"👨🏿‍🦲 - {clprice}",callback_data=f"upgrade_character|{user_id}|{group_id}")
-            farm_button = InlineKeyboardButton(f"🏡 - {farmprice}", callback_data=f"upgrade_farm|{user_id}|{group_id}")
-            vamp_button = InlineKeyboardButton(f"🧛🏻‍♀️ - {vamprice}",callback_data=f"upgrade_vampirism|{user_id}|{group_id}")
-            chronos_button = InlineKeyboardButton(f"⏳ - 330", callback_data=f"buy_chronos|{user_id}|{group_id}")
-            fortuna_love = InlineKeyboardButton(f"🍀 - {fortuna_price}",callback_data=f"upgrade_fortuna|{user_id}|{group_id}")
-            markup.add(level_button, farm_button, vamp_button, chronos_button, fortuna_love)
+
+        markup = InlineKeyboardMarkup()
+        level_button = InlineKeyboardButton(f"👨🏿‍🦲 - {clprice}",callback_data=f"upgrade_character|{user_id}|{group_id}")
+        farm_button = InlineKeyboardButton(f"🏡 - {farmprice}", callback_data=f"upgrade_farm|{user_id}|{group_id}")
+        vamp_button = InlineKeyboardButton(f"🧛🏻‍♀️ - {vamprice}",callback_data=f"upgrade_vampirism|{user_id}|{group_id}")
+        chronos_button = InlineKeyboardButton(f"⏳ - 330", callback_data=f"buy_chronos|{user_id}|{group_id}")
+        fortuna_love = InlineKeyboardButton(f"🍀 - {fortuna_price}",callback_data=f"upgrade_fortuna|{user_id}|{group_id}")
+        rebirth = InlineKeyboardButton(f"👑 - {get_rebirth_price(rebirth_level)}",callback_data=f"upgrade_rebirth|{user_id}|{group_id}")
+        markup.add(level_button, farm_button, vamp_button, chronos_button, fortuna_love, rebirth)
 
         bot.edit_message_text(
             chat_id=call.message.chat.id,
@@ -1034,6 +1374,81 @@ def handle_upgrade_callback(call):
             reply_markup=markup
         )
 
+        conn.close()
+        
+    elif call.data.startswith("upgrade_rebirth"):
+        bot.answer_callback_query(call.id)
+        _, user_id, group_id = call.data.split('|')
+        user_id = int(user_id)
+        group_id = int(group_id)
+
+        if call.from_user.id != user_id:
+            bot.answer_callback_query(call.id, "❌ Не ваша кнопка", show_alert=True)
+            return
+
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute(f"SELECT points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price, rebirth_level, ares FROM '{group_id}' WHERE user_id = ?",(user_id,))
+        result = cursor.fetchone()
+        if result is None:
+            bot.answer_callback_query(call.id, "❌ Пользователь не найден", show_alert=True)
+            conn.close()
+            return
+        points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price, rebirth_level, ares = result
+
+        rebirth_price = get_rebirth_price(rebirth_level)
+        if rebirth_price is None:
+            bot.answer_callback_query(call.id, "❌ Максимальный уровень перерождения достигнут", show_alert=True)
+            conn.close()
+            return
+        if points >= rebirth_price and rebirth_price is not None:
+            points -= rebirth_price
+            rebirth_level += 1
+            
+            # Сброс всех параметров
+            cursor.execute(f"""
+                UPDATE '{group_id}' 
+                SET points = 0, 
+                    last_play = 0, 
+                    character_level = 1, 
+                    farm_level = 1, 
+                    vampirism = 0, 
+                    clprice = 60, 
+                    farmprice = 85, 
+                    vamprice = 120, 
+                    chronos = ?, 
+                    ares = ?, 
+                    fortuna = 0, 
+                    fortuna_price = 1500,
+                    rebirth_level = ?
+                WHERE user_id = ?
+            """, (chronos, ares, rebirth_level, user_id))
+            conn.commit()
+            
+            # Получаем обновленные данные для кнопок
+            cursor.execute(f"SELECT points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price, rebirth_level FROM '{group_id}' WHERE user_id = ?",(user_id,))
+            points, character_level, clprice, farm_level, farmprice, vampirism, vamprice, chronos, fortuna, fortuna_price, rebirth_level = cursor.fetchone()
+            rebirth_boost = int(get_rebirth_multiplier(rebirth_level))
+            markup = InlineKeyboardMarkup()
+            level_button = InlineKeyboardButton(f"👨🏿‍🦲 - {clprice}", callback_data=f"upgrade_character|{user_id}|{group_id}")
+            farm_button = InlineKeyboardButton(f"🏡 - {farmprice}", callback_data=f"upgrade_farm|{user_id}|{group_id}")
+            vamp_button = InlineKeyboardButton(f"🧛🏻‍♀️ - {vamprice}", callback_data=f"upgrade_vampirism|{user_id}|{group_id}")
+            chronos_button = InlineKeyboardButton(f"⏳ - 330", callback_data=f"buy_chronos|{user_id}|{group_id}")
+            fortuna_love = InlineKeyboardButton(f"🍀 - {fortuna_price}", callback_data=f"upgrade_fortuna|{user_id}|{group_id}")
+            rebirth = InlineKeyboardButton(f"👑 - {get_rebirth_price(rebirth_level)}", callback_data=f"upgrade_rebirth|{user_id}|{group_id}")
+            markup.add(level_button, farm_button, vamp_button, chronos_button, fortuna_love, rebirth)
+
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=f"🟢 Ваши очки: {points}\n❓ Выберите, что вы хотите улучшить:",
+                reply_markup=markup
+            )
+            bot.answer_callback_query(call.id, f"✅ Вы переродились! Новый уровень: {rebirth_level} - {get_rebirth_names(rebirth_level)}")
+        else:
+            bot.answer_callback_query(call.id, "❌ Недостаточно очков для ребитха или достигнут максимальный уровень")
+        
         conn.close()
 
 bot.register_callback_query_handler(handle_upgrade_callback, func=lambda call: call.data.startswith(("upgrade", "buy_chronos")))
